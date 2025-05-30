@@ -9,16 +9,17 @@ Steps to manually configure S3 Event Notification:
 
 1. Go to the AWS S3 console.
 2. Navigate to your existing S3 bucket.
-Go to the Properties tab.
-Scroll down to the Event notifications section.
-Click Create event notification.
-Event name: Give it a meaningful name (e.g., CortexXSIAMFlowLogs).
-Prefix (optional): If your VPC Flow Logs are stored under a specific prefix (e.g., AWSLogs/123456789012/vpcflowlogs/), you can specify it here.
-Suffix (optional): Usually not needed for flow logs.
-Events types: Select All object create events (s3:ObjectCreated:*).
-Destination:
-Choose SQS Queue.
-Select Choose from your SQS queues.
-In the "SQS queue" dropdown, find and select the SQS queue created by your CloudFormation stack. Its name will be something like vpc-flow-log-sqs-us-east-1 (or whatever your QueueNameFromUser and region are). You can get its ARN from the CloudFormation stack's Outputs: SQSQueueARN.
-Click Save changes.
+3. Go to the Properties tab.
+4. Scroll down to the Event notifications section.
+5. Click Create event notification.
+6. Event name: Give it a meaningful name (e.g., CortexXSIAMFlowLogs).
+7. Prefix (optional): If your VPC Flow Logs are stored under a specific prefix (e.g., AWSLogs/123456789012/vpcflowlogs/), you can specify it here.
+8. Suffix (optional): Usually not needed for flow logs.
+9. Events types: Select All object create events (s3:ObjectCreated:*).
+10. Destination:
+11. Choose SQS Queue.
+12. Select Choose from your SQS queues.
+13. In the "SQS queue" dropdown, find and select the SQS queue created by your CloudFormation stack. Its name will be something like vpc-flow-log-sqs-us-east-1 (or whatever your QueueNameFromUser and region are). You can get its ARN from the CloudFormation stack's Outputs: SQSQueueARN.
+14. Click Save changes.
+
 Once you manually configure this, S3 will start sending notifications to the SQS queue, and Cortex XSIAM will be able to ingest the logs.
