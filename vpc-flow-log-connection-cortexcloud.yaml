@@ -1,0 +1,269 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Template which can either create a new S3 bucket for VPC flow logs or take an existing bucket ARN, and configure an SQS queue and an IAM role for Cortex Cloud ingestion.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Cortex Cloud Flow Logs Integration
+        Parameters:
+          - CreateNewBucket
+          - ExistingBucketARN
+          - BucketName
+          - QueueNameFromUser
+          - CortexXSIAMAccountID
+          - ExternalId
+          - DLQMaxReceiveCount
+    ParameterLabels:
+      CreateNewBucket:
+        default: Create New S3 Bucket?
+      ExistingBucketARN:
+        default: ARN of Existing S3 Bucket (if not creating new)
+      BucketName:
+        default: New S3 Bucket Name (if creating new)
+      QueueNameFromUser:
+        default: SQS Queue Name
+      CortexXSIAMAccountID:
+        default: Cortex XSIAM AWS Account ID
+      ExternalId:
+        default: External ID from Cortex XSIAM
+      DLQMaxReceiveCount:
+        default: DLQ Max Receive Count (before moving to DLQ)
+
+Parameters:
+  CreateNewBucket:
+    Type: String
+    Default: 'Yes'
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+    Description: Choose 'Yes' to create a new S3 bucket, or 'No' to use an existing one.
+  ExistingBucketARN:
+    Type: String
+    Default: ''
+    Description: If 'Create New S3 Bucket?' is 'No', enter the ARN of the existing S3 bucket.
+  BucketName:
+    Type: String
+    Default: vpc-flow-log-bucket
+    Description: The name of the S3 Bucket to create (only if 'Create New S3 Bucket?' is 'Yes'). A unique suffix will be appended.
+  QueueNameFromUser:
+    Type: String
+    Default: vpc-flow-log-sqs
+    Description: Enter the SQS Queue name. A unique suffix will be appended.
+  CortexXSIAMAccountID:
+    Type: String
+    Default: '006742885340'
+    Description: The AWS account ID provided by Cortex XSIAM for cross-account access.
+  ExternalId:
+    Type: String
+    Description: The External ID provided by Cortex XSIAM to prevent confused deputy problem.
+  DLQMaxReceiveCount:
+    Type: Number
+    Default: 3
+    Description: The number of times a message is received before it is moved to the Dead Letter Queue.
+
+Conditions:
+  ShouldCreateNewBucket: !Equals [!Ref CreateNewBucket, 'Yes']
+  ShouldUseExistingBucket: !Equals [!Ref CreateNewBucket, 'No']
+
+Resources:
+  CortexXSIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref CortexXSIAMAccountID
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref ExternalId
+      Path: /
+      Tags:
+        - Key: ManagedBy
+          Value: PaloAltoNetworks
+        - Key: Purpose
+          Value: CortexXSIAMAccess
+
+  SQSDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${QueueNameFromUser}-DLQ-${AWS::Region}"
+      MessageRetentionPeriod: 345600
+      Tags:
+        - Key: ManagedBy
+          Value: PaloAltoNetworks
+        - Key: Purpose
+          Value: CortexXSIAMFlowLogsDLQ
+
+  SQSQueue:
+    Type: AWS::SQS::Queue
+    DependsOn:
+      - SQSDeadLetterQueue
+    Properties:
+      QueueName: !Sub "${QueueNameFromUser}-${AWS::Region}"
+      DelaySeconds: 5
+      ReceiveMessageWaitTimeSeconds: 0
+      VisibilityTimeout: 0
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SQSDeadLetterQueue.Arn
+        maxReceiveCount: !Ref DLQMaxReceiveCount
+      Tags:
+        - Key: ManagedBy
+          Value: PaloAltoNetworks
+        - Key: Purpose
+          Value: CortexXSIAMFlowLogs
+
+  CortexXSIAMSQSPolicy:
+    Type: AWS::IAM::Policy
+    DependsOn:
+      - SQSQueue
+      - SQSDeadLetterQueue
+      - CortexXSIAMRole
+    Properties:
+      PolicyName: CortexXSIAMAccessToSQS
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # SQS Permissions for Cortex XSIAM to consume messages from main queue AND DLQ
+          # Note: IAM Policies (AWS::IAM::Policy) CAN have multiple resources in a single statement.
+          - Effect: Allow
+            Action:
+              - 'sqs:ReceiveMessage'
+              - 'sqs:DeleteMessage'
+              - 'sqs:GetQueueAttributes'
+              - 'sqs:ChangeMessageVisibility'
+            Resource:
+              - !GetAtt SQSQueue.Arn
+              - !GetAtt SQSDeadLetterQueue.Arn
+          # S3 Permissions for Cortex XSIAM to retrieve objects from the bucket
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+            Resource:
+              !If
+                - ShouldCreateNewBucket
+                - !Sub 'arn:aws:s3:::${S3BUCKET}/*'
+                - !Sub '${ExistingBucketARN}/*'
+      Roles:
+        - !Ref CortexXSIAMRole
+
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    DependsOn:
+      - SQSQueue
+      - CortexXSIAMRole
+      - SQSDeadLetterQueue
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Statement 1: Policy for S3 to send messages to the main queue
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action:
+              - 'sqs:SendMessage'
+              - 'sqs:GetQueueAttributes'
+            Resource: !GetAtt SQSQueue.Arn
+            Condition:
+              ArnLike:
+                aws:SourceArn:
+                  !If
+                    - ShouldCreateNewBucket
+                    - !Sub 'arn:aws:s3:::${BucketName}-${AWS::AccountId}'
+                    - !Ref ExistingBucketARN
+          # Statement 2: Policy for Cortex XSIAM Role to access the main SQS Queue
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt CortexXSIAMRole.Arn
+            Action:
+              - 'sqs:ReceiveMessage'
+              - 'sqs:DeleteMessage'
+              - 'sqs:GetQueueAttributes'
+              - 'sqs:ChangeMessageVisibility'
+            Resource: !GetAtt SQSQueue.Arn # Only main queue for this statement
+          # Statement 3: Policy for Cortex XSIAM Role to access the Dead Letter Queue
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt CortexXSIAMRole.Arn
+            Action:
+              - 'sqs:ReceiveMessage'
+              - 'sqs:DeleteMessage'
+              - 'sqs:GetQueueAttributes'
+              - 'sqs:ChangeMessageVisibility'
+            Resource: !GetAtt SQSDeadLetterQueue.Arn # Only DLQ for this statement
+      Queues:
+        - !Ref SQSQueue
+        - !Ref SQSDeadLetterQueue
+
+  S3BUCKET:
+    Type: AWS::S3::Bucket
+    Condition: ShouldCreateNewBucket
+    DependsOn:
+      - QueuePolicy
+    Properties:
+      BucketName: !Sub "${BucketName}-${AWS::AccountId}"
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Queue: !GetAtt SQSQueue.Arn
+      Tags:
+        - Key: ManagedBy
+          Value: PaloAltoNetworks
+        - Key: Purpose
+          Value: CortexXSIAMFlowLogs
+    DeletionPolicy: Retain
+
+  S3BUCKETPOL:
+    Type: AWS::S3::BucketPolicy
+    Condition: ShouldCreateNewBucket
+    Properties:
+      Bucket: !Ref S3BUCKET
+      PolicyDocument:
+        Id: CrossAccessPolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSLogDeliveryWrite
+            Action: 's3:PutObject'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${S3BUCKET}/AWSLogs/${AWS::AccountId}/*'
+            Principal:
+              Service: delivery.logs.amazonaws.com
+          - Sid: AWSLogDeliveryAclCheck
+            Action: 's3:GetBucketAcl'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${S3BUCKET}'
+            Principal:
+              Service: delivery.logs.amazonaws.com
+
+Outputs:
+  FlowLogsBucketName:
+    Description: Name of the S3 Bucket for Flow Logs
+    Value: !If
+      - ShouldCreateNewBucket
+      - !Ref S3BUCKET
+      - !Select [1, !Split [':::', !Ref ExistingBucketARN]]
+  FlowLogsBucketARN:
+    Description: ARN of the S3 Bucket for Flow Logs
+    Value: !If
+      - ShouldCreateNewBucket
+      - !GetAtt S3BUCKET.Arn
+      - !Ref ExistingBucketARN
+  SQSQueueURL:
+    Description: URL of the main SQS Queue for Cortex XSIAM
+    Value: !Ref SQSQueue
+  SQSQueueARN:
+    Description: ARN of the main SQS Queue for Cortex XSIAM
+    Value: !GetAtt SQSQueue.Arn
+  SQSQueueName:
+    Description: Name of the main SQS Queue for Cortex XSIAM
+    Value: !GetAtt SQSQueue.QueueName
+  CortexXSIAMRoleARN:
+    Description: ARN of the IAM Role for Cortex XSIAM to assume
+    Value: !GetAtt CortexXSIAMRole.Arn
+  ExternalIdUsed:
+    Description: The External ID provided for Cortex XSIAM
+    Value: !Ref ExternalId
