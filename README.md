@@ -1,4 +1,4 @@
-# VPC Flow Log Enablement for Cortex XSIAM ☁️
+# VPC Flow Log Enablement for Cortex Cloud + XSIAM ☁️
 
 This guide outlines the steps to enable VPC Flow Log ingestion into Cortex XSIAM using AWS CloudFormation. You can choose to create a new S3 bucket for your VPC Flow Logs or use an existing one.
 
