@@ -1,5 +1,12 @@
 # vpc-cortexcloud
 
+## New S3 Bucket for VPC Flow Logs
+Run the Cloudformation template
+1. Provide a Stack Name: CortexCloudVPCFlowLogs
+2. Parameters
+3.   Create New S3 Bucket?
+4.     Yes
+
 ## Existing S3 Bucket for Flow Logs See Below:
 What you need to do if using an existing S3 bucket:
 
