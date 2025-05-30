@@ -7,8 +7,8 @@ If you set CreateNewBucket to No and provide ExistingBucketARN, you will need to
 
 Steps to manually configure S3 Event Notification:
 
-Go to the AWS S3 console.
-Navigate to your existing S3 bucket.
+1. Go to the AWS S3 console.
+2. Navigate to your existing S3 bucket.
 Go to the Properties tab.
 Scroll down to the Event notifications section.
 Click Create event notification.
