@@ -4,8 +4,8 @@
 Run the Cloudformation template
 1. Provide a Stack Name: CortexCloudVPCFlowLogs
 2. Parameters
-   a. Create New S3 Bucket: Yes
-   b. ARN of Existing S3 Bucket: Leave Blank
+   - Create New S3 Bucket: Yes
+   - ARN of Existing S3 Bucket: Leave Blank
 
 ## Existing S3 Bucket for Flow Logs See Below:
 What you need to do if using an existing S3 bucket:
