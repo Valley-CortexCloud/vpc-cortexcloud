@@ -6,6 +6,10 @@ Run the Cloudformation template
 2. Parameters
    - Create New S3 Bucket: Yes
    - ARN of Existing S3 Bucket: Leave Blank
+   - New S3 Bucket Name (if creating new): Any name
+   - SQS Queue Name: Any name
+   - Cortex XSIAM AWS Account ID: Leave default (unless FEDERAL TENANT)
+   - External ID from Cortex XSIAM: Random https://www.uuidgenerator.net/version4
 
 ## Existing S3 Bucket for Flow Logs See Below:
 What you need to do if using an existing S3 bucket:
