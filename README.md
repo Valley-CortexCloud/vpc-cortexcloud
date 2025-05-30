@@ -12,6 +12,19 @@ Run the Cloudformation template
    - External ID from Cortex XSIAM: Random https://www.uuidgenerator.net/version4
 
 ## Existing S3 Bucket for Flow Logs See Below:
+Run the Cloudformation template
+
+1. Provide a Stack Name: CortexCloudVPCFlowLogs
+2. Parameters
+   - Create New S3 Bucket: No
+   - ARN of Existing S3 Bucket: ARN of your S3 Bucket that houses the Flow Logs (ensure you have the correct format)
+   - New S3 Bucket Name (if creating new): LEAVE BLANK
+   - SQS Queue Name: Any name
+   - Cortex XSIAM AWS Account ID: Leave default (unless FEDERAL TENANT)
+   - External ID from Cortex XSIAM: Random https://www.uuidgenerator.net/version4
+
+
+
 What you need to do if using an existing S3 bucket:
 
 If you set CreateNewBucket to No and provide ExistingBucketARN, you will need to manually configure the S3 event notification on that existing bucket to send s3:ObjectCreated:* events to the SQS queue created by this CloudFormation stack.
