@@ -1,4 +1,4 @@
-# vpc-cortexcloud
+# VPC Flow Log Enablement for Cortex Cloud 
 
 ## New S3 Bucket for VPC Flow Logs
 Run the Cloudformation template
